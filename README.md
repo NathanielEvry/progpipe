@@ -41,9 +41,9 @@ Quick, throw that in to progpipe to get a REAL eta.
 
 ```bash
 $ while :; do 
-	df / | tr -d "%" | tail -n1
-	sleep 1
-	done | progpipe --goal-num 99 --field-sel 5
+    df / | tr -d "%" | tail -n1
+    sleep 1
+  done | progpipe --goal-num 99 --field-sel 5
 ```
 ```
 [ 8.8607% 27/99 ]	avg/s:.1458	etc:2022-06-02 20:12:55
@@ -57,9 +57,9 @@ Uh oh, that's saying since we've started watching:
 Using the verbose option
 ```bash
 $ while :; do 
-	df / | tr -d "%" | tail -n1
-	sleep 1
-	done | progpipe -g 99 -ff 5 --verbose
+    df / | tr -d "%" | tail -n1
+    sleep 1
+  done | progpipe -g 99 -ff 5 --verbose
 ```
 
 ```bash
@@ -75,9 +75,9 @@ Alternatively, we can track the bytes remaining field and estimate how long it w
 
 ```bash
 $ while :; do
-	df / | tail -n1
-	sleep 1
-	done | progpipe -g 10000 -f 4 -v
+    df / | tail -n1
+    sleep 1
+  done | progpipe -g 10000 -f 4 -v
 ```
 ```bash
 [ 2.9944% 83118508/10000 ]	avg/s:135024.2105	etc:2022-06-02 20:28:34
@@ -95,15 +95,15 @@ If your script iterates over millions of loops like mine often do, this is a lif
 
 ```bash
 $ for file in $(find /my/file/path/);do
-	rm $file
-done
+    rm $file
+  done
 ```
 Assuming that each file is several GB in size, this can take QUITE a long time to finish. The easiest way to monitor it would be with the following progpipe command.
 ```bash
 $ while :; do
-	find /my/file/path/ | wc -l
-	sleep 1
-	done | progpipe -g 0
+    find /my/file/path/ | wc -l
+    sleep 1
+  done | progpipe -g 0
 ```
 
 ## A more complicated cleanup script example
@@ -112,10 +112,11 @@ Given the script below that will only remove SOME of the files in a directory:
 ```bash
 # Remove files with zeros in their names
 $ for file in $(find /my/file/path/);do
-	if [[ "$file" =~ .*0.* ]];then
-	echo "Removing $file"
-	rm $file
-done
+    if [[ "$file" =~ .*0.* ]];then
+    echo "Removing $file"
+    rm $file
+    fi
+  done
 ```
 This actually isn't more complicated for progpipe. It's still only counting the decrementing files. Instead of setting the goal to `0`, we set it to the correct/estimated number.
 
@@ -135,7 +136,35 @@ $ echo $((88890 - 29841))
 This makes our progpipe command:
 ```bash
 $ while :; do
-	find /my/file/path/ | wc -l
-	sleep 1
-	done | progpipe -g 59049
+    find /my/file/path/ | wc -l
+    sleep 1
+  done | progpipe -g 59049
 ```
+
+```
+[ .3219% 88771/59049 ]  avg/s:9.6000    etc:2022-06-02 21:38:52
+```
+
+# Usage Scenario 3: Waiting on a super slow SD card or USB drive
+You've just finished copy/pasting your files and know to use the `sync` command to safely eject, but the command hangs!
+
+```bash
+# Show how much dirty memory the system has
+$ grep Dirty: /proc/meminfo
+Dirty:               7320 kB
+
+# You know the drill, keep outputting the values as time-series data, then pipe it to progpipe
+
+# on one line
+$ while :;do grep Dirty: /proc/meminfo;sleep 1;done | progpipe -f 2 -g 0
+
+# Nice formatting
+$ while :;do
+    grep Dirty: /proc/meminfo
+    sleep 1
+  done | progpipe -f 2 -g 0
+```
+
+`Dirty:               (7320) kB`
+
+Option `-f 2` selects the correct field and `-g 0` tells progpipe this is a decrementing value to track down to zero.
