@@ -12,6 +12,12 @@ I wrote this after becoming frustrated with the lack of a clear and simple progr
 - progpipe was written for [bash](https://www.gnu.org/software/bash/), but will work with most other shells.
 - [bc](https://ss64.com/bash/bc.html) for float math
 
+# Autocomplete
+- Thanks to ChatGPT, whipped this up in a few seconds.
+> write a bash-completions script for this code `...`
+
+`sudo cp progpipe_autocomplete /usr/share/bash-completion/completions/progpipe`
+
 # Usage Scenario 1: A rapidly filling system disk
 A disk is rapidly filling up on one of your servers. How long do you have left before the system freezes?
 

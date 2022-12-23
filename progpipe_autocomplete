@@ -1,0 +1,38 @@
+_progpipe() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD - 1]}"
+    opts="--goal-num -g --field-sel -f --debug -d --test-mode -t --no-clear -c --message -m --verbose -v"
+
+    # Show help if no options are provided
+    if [ $COMP_CWORD -eq 1 ]; then
+        COMPREPLY=($(compgen -W "$opts" -- "$cur"))
+        return 0
+    fi
+
+    case "${prev}" in
+    -g | --goal-num)
+        # Allow user to enter a number as the goal number
+        COMPREPLY=($(compgen -W "$(echo {0..9})" -- "$cur"))
+        return 0
+        ;;
+    -f | --field-sel)
+        # Allow user to enter a number as the field selection
+        COMPREPLY=($(compgen -W "$(echo {1..9})" -- "$cur"))
+        return 0
+        ;;
+    -m | --message)
+        # Allow user to enter any string as the message
+        COMPREPLY=($(compgen -W "" -- "$cur"))
+        return 0
+        ;;
+    *)
+        # Complete options
+        COMPREPLY=($(compgen -W "$opts" -- "$cur"))
+        return 0
+        ;;
+    esac
+}
+
+complete -F _progpipe progpipe
