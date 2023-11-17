@@ -1,12 +1,19 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 ###############################################################################
-# Writen by Nathaniel Evry nathaniel@quub.space
-# progpipe: useful for people who need to wait. Often.
+# progpipe: A bash script for real-time progress estimation in data streams.
+# It calculates and displays estimated completion time (ETC) for jobs based on
+# piped input. Useful for long-running tasks or people who need to wait. Often.
+# 
+# Writen by Nathaniel Evry - nathaniel.evry@gmail.com
 # https://github.com/altometer/progpipe
-###############################################################################
+################################################################################
 
 show_help() {
+	# Help information is printed and the script exits after displaying.
+	# Print detailed usage instructions, available options and flags,
+	# and several examples to demonstrate how to use the script.
+
 	cat <<EOFHELP
 progpipe does ETC calculations on incrementing or decrementing piped input
 
@@ -57,8 +64,12 @@ die() {
 }
 
 test_mode() {
-	# Calls on self with debug options and a 10sec runtime
+	# test_mode function is designed to perform automated tests in a loop.
+	# It simulates input for count-up and count-down scenarios.
+	# test_mode is useful for verifying that the script works after changes.
+	# The function continuously calls itself for ongoing testing.
 
+	echo "progpipe: Starting tests"
 	# loop 1, count up
 	for i in {11..101}; do
 		echo "${i}"
@@ -84,16 +95,16 @@ parse_params() {
 		case "${1-}" in
 		-h | --help) show_help ;;
 		-d | --debug)
-			flag_debug=t
+			debug_mode=t
 			;;
 		-v | --verbose)
-			flag_verbose_time_remaining=t
+			verbose_timing_enabled=t
 			;;
 		-c | --no-clear)
-			flag_no_lineclear=f
+			no_screen_clear=f
 			;;
 		-m | --message)
-			string_header_msg="${2-}"
+			header_message="${2-}"
 			shift
 			;;
 		-g | --goal-num)
@@ -101,7 +112,7 @@ parse_params() {
 			shift
 			;;
 		-f | --field-sel)
-			flag_select_field="${2-}"
+			selected_field="${2-}"
 			shift
 			;;
 		-t | --test-mode)
@@ -120,34 +131,40 @@ parse_params() {
 }
 
 select_field() {
+	# Selects a specified field from tab-separated input for monitoring.
+	# Validates and extracts the field as defined by the user (selected_field).
 	local a
 	local c
 
-	[[ ! $flag_select_field =~ ^[0-9]+$ ]] &&
-		die "ERROR: ${flag_select_field} is not a number"
+	# Validate that the selected field is a positive integer.
+	[[ ! $selected_field =~ ^[0-9]+$ ]] &&
+		die "ERROR: ${selected_field} is not a number"
 
-	# a="awk -F'\t' '{print $ 999}'"
+	# Hacky string placeholder substitution
 	a="awk '{print $ 999}'"
-	c=${a/ 999/$flag_select_field}
+	c=${a/ 999/$selected_field}
 
-	stdin_holder=$(
-		echo "$stdin_holder" | eval $c
+	input_value=$(
+		echo "$input_value" | eval $c
 	)
 
-	[[ -z $stdin_holder ]] &&
-		die "ERROR: Field ${flag_select_field} has no value."
+	[[ -z $input_value ]] &&
+		die "ERROR: Field ${selected_field} has no value."
 
 }
 
 ready_run_check() {
+	# Checks if initial conditions are met to start processing input.
+	# Has the first data update has occurred + enough time elapsed?
+
 	local ready_run
 
 	if [[ -z $first_value ]]; then
-		first_value="$stdin_holder"
+		first_value="$input_value"
 		ready_run='false'
 	fi
 
-	[[ $elapsed_time -le 0 ]] && ready_run='false'
+	[[ $time_elapsed -le 0 ]] && ready_run='false'
 
 	[[ -z $ready_run ]] && return 0
 
@@ -156,35 +173,39 @@ ready_run_check() {
 }
 
 update_math() {
-	# [[ $goal_number == 0 ]] && goal_number=$first_value
-	# If goal number < current number
+	# Performs main calculations for progress estimation.
+	# We have to do a lot of float math, and this is a lot "easier"
+	# Calculates total work, progress, average rate, and estimated completion.
 	local total_work
 
+	# Calculate the total amount of work based on initial and goal values.
 	total_work=$(bcmath "$goal_number - $first_value")
 
-	work_remaining=$(bcmath "$goal_number - $stdin_holder")
+	remaining_work=$(bcmath "$goal_number - $input_value")
 
-	elapsed_progress=$(bcmath "$stdin_holder - $first_value")
-	avg_rate=$(bcmath "$elapsed_progress / $elapsed_time")
+	progress_elapsed=$(bcmath "$input_value - $first_value")
+	average_rate=$(bcmath "$progress_elapsed / $time_elapsed")
 
-	percent_complete=$(bcmath "$elapsed_progress * 100 / $total_work")
+	completion_percentage=$(bcmath "$progress_elapsed * 100 / $total_work")
 
-	# check if the rate > 0, or ETC = INF
-	if bcmath "$avg_rate >= 0" >/dev/null; then
-		seconds_left=$(bcmath "$work_remaining / $avg_rate")
-		seconds_left=${seconds_left%%.*} # clear decimal
+	# check if the progress rate is more than 0/second, or ETC = INF
+	if bcmath "$average_rate >= 0" >/dev/null; then
+		seconds_remaining=$(bcmath "$remaining_work / $average_rate")
+		seconds_remaining=${seconds_remaining%%.*} # clear decimal
 
 		# generate ETC date string in format YYYY-MM-DD HH:MM:SS
-		epoch_etc=$(date \
-			--date="+${seconds_left} seconds" \
+		estimated_completion_time=$(date \
+			--date="+${seconds_remaining} seconds" \
 			'+%Y-%m-%d %T')
 	else
-		seconds_left="INF"
-		epoch_etc="INF"
+		seconds_remaining="INF"
+		estimated_completion_time="INF"
 	fi
 }
 
 bcmath() {
+	# Wrapper for bc tool, ensuring consistent precision in calculations.
+	# Used for arithmetic operations required in progress tracking.
 	echo "$1" |
 		sed -r "s/^/scale=4; /" |
 		bc -l |
@@ -192,30 +213,35 @@ bcmath() {
 }
 
 draw_prog() {
+	# Renders progress output, including percentage, rate, and ETC.
+	# Handles screen clearing and displays header message if set.
 	local etc_string=''
-	etc_string="[ $percent_complete% $stdin_holder/$goal_number ]"
-	etc_string+="	avg/s:$avg_rate"
-	etc_string+="	etc:$epoch_etc"
+	etc_string="[ $completion_percentage% $input_value/$goal_number ]"
+	etc_string+="	avg/s:$average_rate"
+	etc_string+="	etc:$estimated_completion_time"
 
 	# Clear the screen before each redraw
-	[[ -z $flag_no_lineclear ]] && clear
+	[[ -z $no_screen_clear ]] && clear
 
 	# Show the header MSG set with -m or --message
-	[[ -n $string_header_msg ]] && echo "$string_header_msg"
+	[[ -n $header_message ]] && echo "$header_message"
 
-	# echo "[ $percent_complete% $elapsed_progress/$goal_number ]	avg/s:$avg_rate	etc:$epoch_etc" #TODO remove stub
+	# echo "[ $completion_percentage% $progress_elapsed/$goal_number ]	avg/s:$average_rate	etc:$estimated_completion_time" #TODO remove stub
 	echo "${etc_string}" # [ 50% 50/100 ] avg/s:1 etc:2022-06-01 12:00:00
 
-	[[ -n $flag_verbose_time_remaining ]] && print_time_long | column -t
-	[[ -n $flag_debug ]] && print_debug | column -t
+	[[ -n $verbose_timing_enabled ]] && print_time_long | column -t
+	[[ -n $debug_mode ]] && print_debug | column -t
 }
 
 print_time_long() {
+	# Provides detailed breakdown of time remaining when verbose mode is enabled
+	# Outputs remaining time in days, hours, minutes, and seconds.
+
 	local days
 	local hours
 	local minutes
 
-	minutes=$(bcmath "$seconds_left / 60")
+	minutes=$(bcmath "$seconds_remaining / 60")
 	hours=$(bcmath "$minutes / 60")
 	days=$(bcmath "$hours / 24")
 
@@ -223,56 +249,62 @@ print_time_long() {
 	echo "Days:	$days"
 	echo "Hours:	$hours"
 	echo "Minutes:	$minutes"
-	echo "Seconds:	$seconds_left"
+	echo "Seconds:	$seconds_remaining"
 }
 
 print_debug() {
-	echo "flag_select_field:	${flag_select_field}"
-	echo "flag_debug:	${flag_debug}"
-	echo "flag_no_lineclear:	${flag_no_lineclear}"
-	echo "flag_verbose_time_remaining:	${flag_verbose_time_remaining}"
+	# Outputs internal script variables for debugging purposes.
+	# Useful for troubleshooting and understanding script state.
+
+	echo "selected_field:	${selected_field}"
+	echo "debug_mode:	${debug_mode}"
+	echo "no_screen_clear:	${no_screen_clear}"
+	echo "verbose_timing_enabled:	${verbose_timing_enabled}"
 	echo "goal_number:	${goal_number}"
-	echo "string_header_msg:	${string_header_msg}"
-	echo "stdin_holder:	${stdin_holder}"
+	echo "header_message:	${header_message}"
+	echo "input_value:	${input_value}"
 	echo "first_value:	${first_value}"
-	echo "elapsed_time:	${elapsed_time}"
-	echo "elapsed_progress:	${elapsed_progress}"
-	echo "percent_complete:	${percent_complete}"
-	echo "avg_rate:	${avg_rate}"
-	echo "work_remaining:	${work_remaining}"
-	echo "seconds_left:	${seconds_left}"
-	echo "epoch_etc:	${epoch_etc}"
+	echo "time_elapsed:	${time_elapsed}"
+	echo "progress_elapsed:	${progress_elapsed}"
+	echo "completion_percentage:	${completion_percentage}"
+	echo "average_rate:	${average_rate}"
+	echo "remaining_work:	${remaining_work}"
+	echo "seconds_remaining:	${seconds_remaining}"
+	echo "estimated_completion_time:	${estimated_completion_time}"
 }
 
 main() {
-	local epoch_start
-	local stdin_holder
-	local flag_select_field
-	local flag_no_lineclear
-	local flag_verbose_time_remaining
-	local flag_debug
+	# Main function of the script. Sets up initial variables, parses parameters,
+	# and enters the main loop to read and process input.
+
+	local start_time_epoch
+	local input_value
+	local selected_field
+	local no_screen_clear
+	local verbose_timing_enabled
+	local debug_mode
 	local goal_number
 	local first_value
-	local string_header_msg
-	local elapsed_time
-	local percent_complete
-	local work_remaining
-	local elapsed_progress
-	local avg_rate
-	local seconds_left
-	local epoch_etc
+	local header_message
+	local time_elapsed
+	local completion_percentage
+	local remaining_work
+	local progress_elapsed
+	local average_rate
+	local seconds_remaining
+	local estimated_completion_time
 
-	epoch_start=$EPOCHSECONDS
+	start_time_epoch=$EPOCHSECONDS
 
 	parse_params "$@"
-	[[ -z $goal_number ]] && die "ERROR: Goal is unset"
+	[[ -z $goal_number ]] && die "ERROR: Goal is unset. Check -h for usage."
 
-	while read -r stdin_holder <&3; do
-		# [[ $stdin_holder == "$goal_number" ]] && exit 0
-		elapsed_time=$((EPOCHSECONDS - epoch_start))
+	while read -r input_value <&3; do
+		# [[ $input_value == "$goal_number" ]] && exit 0
+		time_elapsed=$((EPOCHSECONDS - start_time_epoch))
 
 		# -f or --field-sel awk subscript sel field
-		[[ -n $flag_select_field ]] && select_field
+		[[ -n $selected_field ]] && select_field
 
 		ready_run_check || continue
 		update_math
@@ -281,4 +313,5 @@ main() {
 	done 3<&0
 }
 
+# Execute progpipe by piping data into it: `command | progpipe [options]`
 cat | main "$@"
