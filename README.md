@@ -4,7 +4,10 @@ A universal bash progress printer with ETC and many other functions.
 
 [progpipe](https://github.com/altometer/progpipe) works with __ANY__ incoming number that increases or decreases in size towards a goal. Unlike [pv](https://man7.org/linux/man-pages/man1/pv.1.html) you aren't limited to *monitor the progress of **data** through a pipe*". 
 
-It's *this* simple. `(some arbitrary stdout) | progpipe 100`
+It's *this* simple. `(some arbitrary stdout) | progpipe 10`
+```
+[ 33.3333% 4/10 ]       avg/s:.2000     etc:2023-11-01 12:05:54
+```
 
 I wrote this after becoming frustrated with the lack of a clear and simple progress estimation function available to bash.
 
